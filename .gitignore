@@ -1,0 +1,11 @@
+# Editors
+.history
+
+# Video files
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+# Other
+Thumbs.db
