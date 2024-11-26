@@ -1,28 +1,32 @@
 #!/usr/bin/env python3
 
 import argparse
-import ffmpeg # pip install ffmpeg-python
 import glob
+import multiprocessing
 import os
 import platform
 import re
 import shutil
+import time
 from os import path
 
 try:
-    from colored import fg, attr # pip install colored
+    import ffmpeg
+except ImportError:
+    print("Required package python-ffmpeg not installed. Use `python3 -m pip install python-ffmpeg` to use this script.")
+    exit(1)
+
+try:
+    from colored import fg, attr
     __colored__ = True
 except ImportError:
     __colored__ = False
-
+    print("Python colored package not installed. Use `python3 -m pip install colored` to get coloured output.")
     def fg(dummy):
         return ""
-
     def attr(dummy):
         return ""
 
-video_extensions = [ ".mp4", ".avi", ".mov" ]
-output_extension = ".mp4"
 
 def get_video_bitrate(video_file):
     """
@@ -42,7 +46,8 @@ def process_video_file(input_file, output_file):
     """
     Resizes a video by reducing the bitrate
     """
-    print_rel(fg("cyan") + f"COMPRESSING '{input_file}' INTO '{output_file}'\n" + attr("reset"))
+    print_rel(fg("cyan") + f"COMPRESSING '{input_file}' INTO '{output_file}'" + attr("reset"))
+    print("Started at: " + time.strftime("%Y-%m-%d %H:%M") + "\n")
 
     working_dir = path.dirname(output_file)
     current_dir = os.curdir
@@ -100,10 +105,9 @@ def process_video_file(input_file, output_file):
     print("Done.\n")
     return ""
 
-def ffmpeg_h264_10mbps_2pass(input_file, output_file):
+def ffmpeg_h264_bitrate_2pass(input_file, output_file):
     """
-    Encodes a file using H.264, 10Mb/s, 2 passes
-
+    Encodes a file using H.264 codec, fixed bitrate and 2 passes
     See https://www.mux.com/articles/change-video-bitrate-with-ffmpeg#two-pass-encoding-for-more-precise-bitrate-control
     """
     global config
@@ -112,7 +116,7 @@ def ffmpeg_h264_10mbps_2pass(input_file, output_file):
     first_pass = {
         "loglevel": "error",
         "c:v": "libx264",
-        "b:v": "10M",
+        "b:v": config.bitrate,
         "pass": 1,
         "f": "null",
         "movflags": "use_metadata_tags",
@@ -137,8 +141,8 @@ def ffmpeg_h264_10mbps_2pass(input_file, output_file):
     second_pass = {
         "loglevel": "error",
         "c:v": "libx264",
-        "b:v": "10M",
-        "pass": "2",
+        "b:v": config.bitrate,
+        "pass": 2,
         "c:a": "aac",
         "b:a": "10k",
         "movflags": "use_metadata_tags",
@@ -158,10 +162,9 @@ def ffmpeg_h264_10mbps_2pass(input_file, output_file):
     if not config.dry_run:
         cmd.run()
 
-def ffmpeg_h265_crf26(input_file, output_file):
+def ffmpeg_h265_crf(input_file, output_file):
     """
-    Encodes a file using H.266, CRF 26
-    ffmpeg -i input -c:v libx265 -crf 26 -preset fast -c:a aac -b:a 128k output.mp4
+    Encodes a file using H.265 codec and CRF
     """
     global config
 
@@ -169,8 +172,9 @@ def ffmpeg_h265_crf26(input_file, output_file):
     first_pass = {
         "loglevel": "error",
         "c:v": "libx265",
-        "crf": "26",
+        "crf": config.crf,
         "preset": "medium",
+        "x265-params": f"pools={config.cpu_count}",
         "c:a": "aac",
         "b:a": "160k",
         "movflags": "use_metadata_tags",
@@ -190,9 +194,9 @@ def ffmpeg_h265_crf26(input_file, output_file):
     if not config.dry_run:
         cmd.run()
 
-def ffmpeg_h265_10mbps(input_file, output_file):
+def ffmpeg_h265_bitrate_2pass(input_file, output_file):
     """
-    Encodes a file using H.265, 10Mb/s, 2 passes
+    Encodes a file using H.265 codec, constant bitrate and 2 passes
     """
     global config
 
@@ -200,8 +204,9 @@ def ffmpeg_h265_10mbps(input_file, output_file):
     first_pass = {
         "loglevel": "error",
         "c:v": "libx265",
-        "b:v": "10M",
+        "b:v": config.bitrate,
         "pass": 1,
+        "x265-params": f"pass=1f;pools={config.cpu_count}",
         "f": "null",
         "movflags": "use_metadata_tags",
         "map_metadata": "0",
@@ -225,8 +230,9 @@ def ffmpeg_h265_10mbps(input_file, output_file):
     second_pass = {
         "loglevel": "error",
         "c:v": "libx265",
-        "b:v": "10M",
-        "pass": "2",
+        "b:v": config.bitrate,
+        "pass": 2,
+        "x265-params": f"pass=2f;pools={config.cpu_count}",
         "c:a": "aac",
         "b:a": "10k",
         "movflags": "use_metadata_tags",
@@ -246,9 +252,9 @@ def ffmpeg_h265_10mbps(input_file, output_file):
     if not config.dry_run:
         cmd.run()
 
-def ffmpeg_h265_crf26_2pass(input_file, output_file):
+def ffmpeg_h265_crf_2pass(input_file, output_file):
     """
-    Encodes a file using H.265, CRF 26, 2 passes
+    Encodes a file using H.265 codec, CRF and 2 passes
     """
     global config
 
@@ -256,9 +262,9 @@ def ffmpeg_h265_crf26_2pass(input_file, output_file):
     first_pass = {
         "loglevel": "error",
         "c:v": "libx265",
-        "crf": "26",
+        "crf": config.crf,
         "pass": 1,
-        "x265-params": "pass=1",
+        "x265-params": f"pass=1f;pools={config.cpu_count}",
         "f": "null",
         "movflags": "use_metadata_tags",
         "map_metadata": "0",
@@ -282,9 +288,9 @@ def ffmpeg_h265_crf26_2pass(input_file, output_file):
     second_pass = {
         "loglevel": "error",
         "c:v": "libx265",
-        "crf": "26",
-        "pass": "2",
-        "x265-params": "pass=2",
+        "crf": config.crf,
+        "pass": 2,
+        "x265-params": f"pass=2f;pools={config.cpu_count}",
         "c:a": "aac",
         "b:a": "10k",
         "movflags": "use_metadata_tags",
@@ -439,16 +445,74 @@ def main():
     global config
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-i", "--input-dir", default=".", type=lambda x: path.abspath(x), help="Input working directory.")
-    parser.add_argument("-n", "--dry-run", default=False, action="store_true", help="Doesn't actually run ffmpeg.")
-    parser.add_argument("-p", "--processed-dir", default="processed", help="Directory where to place the processed files.")
-    parser.add_argument("-r", "--reset-logfile", default=False, action="store_true", help="Resets the logfile at startup.")
-    parser.add_argument("-f", "--ffmpeg-preset", default="h265_crf26_2pass", choices=ffmpeg_presets.keys(), help="Ffmpeg encoding preset to use.")
-    parser.add_argument("--prefix", default="", help="Prefix to add to every file.")
-    parser.add_argument("--postfix", default="", help="Postfix to add to every file.")
-    parser.add_argument("--check-bitrate", default=True, action="store_false", help="Enable/disable the bitrate check.")
-    parser.add_argument("--check-output-size", default=True, action="store_false", help="Enable/disable the output file size check.")
-
+    parser.add_argument(
+        "-i", "--input-dir",
+        default=".",
+        type=lambda x: path.abspath(x),
+        help="Input working directory."
+    )
+    parser.add_argument(
+        "-n", "--dry-run",
+        default=False,
+        action="store_true",
+        help="Doesn't actually run ffmpeg."
+    )
+    parser.add_argument(
+        "-p", "--processed-dir",
+        default="processed",
+        help="Directory where to place the processed files."
+    )
+    parser.add_argument(
+        "-r", "--reset-logfile",
+        default=False,
+        action="store_true",
+        help="Resets the logfile at startup."
+    )
+    parser.add_argument(
+        "-f", "--ffmpeg-preset",
+        default="h265_crf_2pass",
+        choices=ffmpeg_presets.keys(),
+        help="Ffmpeg encoding preset to use."
+    )
+    parser.add_argument(
+        "--prefix",
+        default="",
+        help="Prefix to add to every file."
+    )
+    parser.add_argument(
+        "--postfix",
+        default="",
+        help="Postfix to add to every file."
+    )
+    parser.add_argument(
+        "--check-bitrate",
+        default=True,
+        action="store_false",
+        help="Enable/disable the bitrate check."
+    )
+    parser.add_argument(
+        "--check-output-size",
+        default=True,
+        action="store_false",
+        help="Enable/disable the output file size check."
+    )
+    parser.add_argument(
+        "--crf",
+        default=24,
+        type=int,
+        help="Default CRF value for profiles that use it."
+    )
+    parser.add_argument(
+        "--bitrate",
+        default="10M",
+        help="Default Bitrate value for profiles that use it."
+    )
+    parser.add_argument(
+        "--cpu-count",
+        default=int(float(multiprocessing.cpu_count()) * 0.75),
+        type=int,
+        help="Default Bitrate value for profiles that use it."
+    )
     config = parser.parse_args()
 
     print(f"WORKING UNDER: {config.input_dir}\n")
@@ -459,11 +523,14 @@ def main():
     scan_and_process_videos()
     clean_ffmpeg()
 
+# Constants
+video_extensions = [ ".mp4", ".avi", ".mov" ]
+output_extension = ".mp4"
 ffmpeg_presets = {
-    "h264_10mbps_2pass": ffmpeg_h264_10mbps_2pass,
-    "h265_10mbps": ffmpeg_h265_10mbps,
-    "h265_crf26_2pass": ffmpeg_h265_crf26_2pass,
-    "h265_crf26": ffmpeg_h265_crf26,
+    "h264_bitrate_2pass": ffmpeg_h264_bitrate_2pass,
+    "h265_bitrate_2pass": ffmpeg_h265_bitrate_2pass,
+    "h265_crf_2pass": ffmpeg_h265_crf_2pass,
+    "h265_crf": ffmpeg_h265_crf,
 }
 
 if __name__ == "__main__":
