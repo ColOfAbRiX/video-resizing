@@ -4,6 +4,7 @@ __pycache__
 
 # Editors
 .history
+.vscode
 
 # Video files
 *.mp4

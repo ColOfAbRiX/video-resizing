@@ -1,23 +1,19 @@
 #!/usr/bin/env python3
 
+from ffmpeg_helper import setup_ffmpeg
 from ffmpeglayer import *
-from filenameprofiles import filename_presets
-from logfile import *
+from filename
 from myio import *
+from ffmpeg_helper import setup_ffmpeg
 from os import path
 import argparse
+import glob
 import multiprocessing
 import os
 import platform
 import shutil
 import time
 import traceback
-
-try:
-    import ffmpeg
-except ImportError:
-    print("Required package python-ffmpeg not installed. Use `python3 -m pip install python-ffmpeg` to use this script.")
-    exit(1)
 
 try:
     from colored import fg, attr
@@ -113,6 +109,62 @@ def process_video_file(input_file, output_file):
     printlog(config, "Done.\n")
     return "OK"
 
+def has_glob_chars(pattern):
+    """Check if a string contains glob pattern characters."""
+    return any(c in pattern for c in "*?[]")
+
+
+def expand_glob_patterns(patterns):
+    """Expand glob patterns to a list of directories.
+
+    If the pattern contains no glob characters, returns it unchanged.
+    Only returns directories (non-directory matches are filtered out).
+    """
+    if has_glob_chars(patterns):
+        matches = glob.glob(patterns)
+        return [m for m in matches if os.path.isdir(m)]
+    else:
+        return [patterns]
+
+
+def scan_and_process_videos_for_dir(input_dir, processed_dir):
+    """
+    Finds and processes videos in a single directory.
+    """
+    global config
+
+    processed_root_path = path.join(input_dir, processed_dir)
+
+    for current_dir, subdirs, files in os.walk(input_dir):
+        current_dir_name = current_dir.replace(input_dir, "")[1:]
+
+        if current_dir_name.startswith(processed_dir):
+            continue
+
+        for file in files:
+            file_name, file_extension = path.splitext(file)
+            input_file = path.join(input_dir, current_dir_name, file)
+            file_name = filename_presets[config.filename_preset](config.prefix + file_name + config.postfix)
+            output_file = path.join(processed_root_path, current_dir_name, file_name) + output_extension
+
+            if not file_extension.lower() in video_extensions or file_name.startswith(processed_dir):
+                continue
+
+            if in_db_file(config, input_file):
+                printlog(config, f"File '{input_file}' already processed, skipping.\n")
+                continue
+
+            try:
+                state = process_video_file(input_file, output_file)
+                add_to_db_file(config, input_file, state)
+            except Exception as ex:
+                error = traceback.format_exc()
+                printlog(config,
+                    fg("red") + f"Error encountered processing '{input_file}', skipping." + attr("reset") + "\n    ERROR: " + error + "\n"
+                )
+                add_to_db_file(config, input_file, "ERROR")
+
+
 def creation_date(path_to_file):
     """
     Try to get the date that a file was created, falling back to when it was
@@ -132,40 +184,20 @@ def creation_date(path_to_file):
 
 def scan_and_process_videos():
     """
-    Finds and processes videos
+    Finds and processes videos. Supports glob patterns for --input-dir.
     """
     global config
 
-    processed_root_path = path.join(config.input_dir, config.processed_dir)
+    input_dirs = expand_glob_patterns(config.input_dir)
 
-    for current_dir, subdirs, files in os.walk(config.input_dir):
-        current_dir = current_dir.replace(config.input_dir, "")[1:]
+    if not input_dirs:
+        print(f"No directories matching: {config.input_dir}")
+        return
 
-        if current_dir.startswith(config.processed_dir):
-            continue
-
-        for file in files:
-            file_name, file_extension = path.splitext(file)
-            input_file = path.join(config.input_dir, current_dir, file)
-            file_name = filename_presets[config.filename_preset](config.prefix + file_name + config.postfix)
-            output_file = path.join(processed_root_path, current_dir, file_name) + output_extension
-
-            if not file_extension.lower() in video_extensions or file_name.startswith(config.processed_dir):
-                continue
-
-            if in_db_file(config, input_file):
-                printlog(config, f"File '{input_file}' already processed, skipping.\n")
-                continue
-
-            try:
-                state = process_video_file(input_file, output_file)
-                add_to_db_file(config, input_file, state)
-            except Exception as ex:
-                error = traceback.format_exc()
-                printlog(config,
-                    fg("red") + f"Error encountered processing '{input_file}', skipping." + attr("reset") + "\n    ERROR: " + error + "\n"
-                )
-                add_to_db_file(config, input_file, "ERROR")
+    for input_dir in input_dirs:
+        config.input_dir = input_dir
+        printlog(config, f"WORKING UNDER: {config.input_dir}\n")
+        scan_and_process_videos_for_dir(input_dir, config.processed_dir)
 
 
 def main():
@@ -179,7 +211,7 @@ def main():
         "-i", "--input-dir",
         default=".",
         type=lambda x: path.abspath(x),
-        help="Input working directory."
+        help="Input working directory. Supports glob patterns (e.g., '/path/to/videos_*')."
     )
     parser.add_argument(
         "-n", "--dry-run",
@@ -258,6 +290,9 @@ def main():
     )
     config = parser.parse_args()
 
+    # Set up ffmpeg binary (downloads if needed)
+    ffmpeg_path = setup_ffmpeg()
+    print(f"Using ffmpeg: {ffmpeg_path}\n")
     printlog(config, f"WORKING UNDER: {config.input_dir}\n")
 
     if config.reset_logfile:

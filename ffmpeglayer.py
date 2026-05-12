@@ -3,12 +3,7 @@
 from myio import *
 from os import path
 import glob
-
-try:
-    import ffmpeg
-except ImportError:
-    print("Required package ffmpeg-python not installed. Use `python3 -m pip install ffmpeg-python` to use this script.")
-    exit(1)
+import ffmpeg
 
 def get_video_bitrate(video_file):
     """
