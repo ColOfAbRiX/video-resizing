@@ -18,8 +18,6 @@ if [ ! -d "venv" ]; then
     echo "Creating virtual environment..."
     python3 -m venv venv
     echo "✓ Virtual environment created"
-else
-    echo "✓ Virtual environment already exists"
 fi
 
 # Activate virtual environment
@@ -40,19 +38,22 @@ echo "Installing Python dependencies..."
 pip install --upgrade pip
 pip install ffmpeg-python colored
 
-echo ""
-echo "✓ All dependencies installed"
-echo ""
+# Download and extract FFmpeg if not already present
+echo "Checking for FFmpeg binaries..."
+if ! which ffmpeg || ! which ffprobe; then
+    # Check if binaries exist in extracted directory
+    if [ ! -f "venv/bin/ffmpeg" ] || [ ! -f "venv/bin/ffprobe" ]; then
+        echo "Downloading FFmpeg binaries..."
 
-# Verify installation
-echo "Verifying installation..."
-python3 -c "import ffmpeg; print('✓ ffmpeg-python: OK')"
-python3 -c "import colored; print('✓ colored: OK')"
+        # Download FFmpeg static build for Linux from GitHub
+        curl -sLO https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz -o /tmp
 
-echo ""
-echo "=== Setup Complete! ==="
-echo ""
-echo "To use the project, run:"
-echo "  source venv/bin/activate"
-echo "  python resize_all.py -i /path/to/videos"
-echo ""
+        # Extract to venv/bin/
+        tar -xf /tmp/ffmpeg-master-latest-linux64-gpl.tar.xz \
+            -C venv/bin \
+            --strip-components=2 \
+            ffmpeg-master-latest-linux64-gpl/bin/ffmpeg ffmpeg-master-latest-linux64-gpl/bin/ffprobe
+
+        echo "✓ FFmpeg binaries installed"
+    fi
+fi
