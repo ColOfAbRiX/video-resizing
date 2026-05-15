@@ -38,7 +38,7 @@ echo ""
 # Install Python dependencies
 echo "Installing Python dependencies..."
 pip install --upgrade pip
-pip install ffmpeg-python imageio-ffmpeg
+pip install ffmpeg-python colored
 
 echo ""
 echo "✓ All dependencies installed"
@@ -47,6 +47,7 @@ echo ""
 # Verify installation
 echo "Verifying installation..."
 python3 -c "import ffmpeg; print('✓ ffmpeg-python: OK')"
+python3 -c "import colored; print('✓ colored: OK')"
 
 echo ""
 echo "=== Setup Complete! ==="

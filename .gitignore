@@ -1,6 +1,7 @@
 # Python
 __pycache__
 *.pyc
+venv/
 
 # Editors
 .history
@@ -17,3 +18,4 @@ Thumbs.db
 
 # Application
 resize_all.db
+resize_all.log

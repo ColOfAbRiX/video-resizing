@@ -2,9 +2,9 @@
 
 from ffmpeg_helper import setup_ffmpeg
 from ffmpeglayer import *
-from filename
+from filenameprofiles import filename_presets
+from logfile import *
 from myio import *
-from ffmpeg_helper import setup_ffmpeg
 from os import path
 import argparse
 import glob
